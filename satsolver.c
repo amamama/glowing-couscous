@@ -43,14 +43,14 @@ typedef struct bitset {
 } bitset_t, * bitset_p;
 
 bitset_p alloc_bitset(size_t l) {
-	bitset_p const ret = malloc(sizeof(bitset_t) + sizeof(unsigned char[l + 8]));
+	bitset_p const ret = malloc(sizeof(bitset_t) + sizeof(unsigned char[(l + 8) & ~7ul]));
 	ret->len = l;
 	ret->size = 0;
 	memset(ret->set, 0, l);
 	return ret;
 }
 
-#define free_bitset(s) (s)//(s?free(s), s = NULL:NULL)
+#define free_bitset(s) (s?free(s), s = NULL:NULL)
 
 bitset_p expand(bitset_p const set, size_t const new_l) { //using arg set after returning this func is UB
 	size_t const old_l = set->len;
@@ -207,7 +207,6 @@ bool empty_clause(clause_p const c) {
 
 typedef struct clause_list {
 	size_t len;
-	size_t size;
 	clause_p clauses[];
 } clause_list_t, * clause_list_p;
 
@@ -223,6 +222,18 @@ void *free_clause_list(clause_list_p const l) {
 	for(size_t i = 0; i < l->len; i++) free_clause(l->clauses[i]);
 	free(l);
 	return NULL;
+}
+
+clause_list_p compact_clause_list(clause_list_p const l) {
+	if(!l) return NULL;
+	size_t b = l->len - 1;
+	for(size_t i = 0; i < b; i++) {
+		if(l->clauses[i]) continue;
+		l->clauses[i] = l->clauses[b];
+		l->clauses[b] = NULL;
+		b--;
+	}
+	l->len = b + 1;
 }
 
 clause_list_p copy_clause_list(clause_list_p const l) {
@@ -308,6 +319,7 @@ clause_list_p exec_one_rule(clause_list_p const l, clause_p const one_lit) {
 		if(!empty_clause(res)) free_clause(l->clauses[i]);
 		free_clause(res);
 	}
+	compact_clause_list(l);
 	return l;
 }
 
@@ -331,6 +343,7 @@ clause_list_p exec_pure_rule(clause_list_p const l, clause_p const pure_lit) {
 		if(!empty(res->p_lit) || !empty(res->n_lit)) free_clause(l->clauses[i]);
 		free_clause(res);
 	}
+	compact_clause_list(l);
 	return l;
 }
 
@@ -341,6 +354,7 @@ clause_list_p exec_cleanup_rule(clause_list_p const l) {
 		if(!empty(res)) free_clause(l->clauses[i]);
 		free_bitset(res);
 	}
+	compact_clause_list(l);
 	return l;
 }
 
@@ -376,24 +390,18 @@ clause_list_p exec_splitting_rule(clause_list_p const l, bitset_p const split_li
 clause_p dpll(clause_list_p const l) {
 	clause_p ret = alloc_clause(alloc_bitset(0), alloc_bitset(0));
 	for(bool empty_o = false, empty_p = false; !(empty_o && empty_p); ) {
-		print_clause_list(l);
 		clause_p o = preprocess_one_rule(l), p = preprocess_pure_rule(l);
 		exec_one_rule(l, o);
 		exec_pure_rule(l, p);
 		empty_o = empty_clause(o);
 		empty_p = empty_clause(p);
-		print_clause(o);
-		print_clause(p);
-		//print_clause(ret); puts("");
 		cup_(&ret->p_lit, o->p_lit);
 		cup_(&ret->p_lit, p->p_lit);
 		cup_(&ret->n_lit, o->n_lit);
 		cup_(&ret->n_lit, p->n_lit);
 		free_clause(o);
 		free_clause(p);
-		getchar();
 	}
-	//puts("dpll");
 
 
 	if(empty_clause_list(l)) return ret;
