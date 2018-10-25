@@ -43,7 +43,8 @@ typedef struct bitset {
 } bitset_t, * bitset_p;
 
 bitset_p alloc_bitset(size_t l) {
-	bitset_p const ret = malloc(sizeof(bitset_t) + sizeof(unsigned char[(l + 8) & ~7ul]));
+	l = (l + 7) & ~7ul;
+	bitset_p const ret = malloc(sizeof(bitset_t) + sizeof(unsigned char[l]));
 	ret->len = l;
 	ret->size = 0;
 	memset(ret->set, 0, l);
@@ -54,6 +55,8 @@ bitset_p alloc_bitset(size_t l) {
 
 bitset_p expand(bitset_p const set, size_t const new_l) { //using arg set after returning this func is UB
 	size_t const old_l = set->len;
+	if(!(new_l >= old_l))
+		printf("???");
 	bitset_p const ret = realloc(set, sizeof(bitset_t) + sizeof(unsigned char[new_l]));
 	ret->len = new_l;
 	memset(ret->set + old_l, 0, new_l - old_l);
@@ -235,6 +238,7 @@ clause_list_p compact_clause_list(clause_list_p const l) {
 	}
 	l->len = b + 1;
 }
+//#define compact_clause_list(e)
 
 clause_list_p copy_clause_list(clause_list_p const l) {
 	clause_list_p ret = alloc_clause_list(l->len);
@@ -364,10 +368,10 @@ bitset_p preprocess_splitting_rule(clause_list_p const l) {
 		bitset_p bs = cup(l->clauses[i]->p_lit, l->clauses[i]->n_lit);
 		bool flag = false;
 		for(size_t j = 0; j < bs->len * 8; j++) {
-			if(!flag && get(bs, j)) 	flag = true;
+			if(!flag && get(bs, j)) flag = true;
 			else set_(&bs, j, 0);
 		}
-	return bs;
+		return bs;
 	}
 	return alloc_bitset(0);
 }
@@ -388,9 +392,16 @@ clause_list_p exec_splitting_rule(clause_list_p const l, bitset_p const split_li
 #define print_clause_list(e) (e)
 
 clause_p dpll(clause_list_p const l) {
+	print_clause_list(l);
 	clause_p ret = alloc_clause(alloc_bitset(0), alloc_bitset(0));
+	int i = 0;
 	for(bool empty_o = false, empty_p = false; !(empty_o && empty_p); ) {
+		print_clause_list(l);
 		clause_p o = preprocess_one_rule(l), p = preprocess_pure_rule(l);
+		print_clause(o);
+		print_clause(p);
+		printf("\n--%d--\n", i++);
+		//getchar();
 		exec_one_rule(l, o);
 		exec_pure_rule(l, p);
 		empty_o = empty_clause(o);
@@ -402,6 +413,7 @@ clause_p dpll(clause_list_p const l) {
 		free_clause(o);
 		free_clause(p);
 	}
+	printf("dpll");
 
 
 	if(empty_clause_list(l)) return ret;
@@ -429,6 +441,7 @@ clause_p dpll(clause_list_p const l) {
 
 int print_bitset(bitset_p s) {
 	if(!s) return 0;
+	//printf(":len = %u, size = %u:", s->len, s->size);
 	for(int i = 0; i < s->len * 8; i++) if(get(s, i)) printf(" %d", i);
 	return 0;
 }
@@ -452,7 +465,8 @@ int print_clause_list(clause_list_p l) {
 int main(void) {
 	clause_list_p l = parse_dimacs();
 	clause_p var = NULL;
-	//print_clause_list(l);
+	print_clause_list(l);
+	getchar();
 	exec_cleanup_rule(l);
 	(var = dpll(l))?print_clause(var):puts("unsat");
 
