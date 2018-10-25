@@ -34,7 +34,7 @@ size_t const popcount_table[256] = {
     4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8,
 };
 
-#define popcount(e) popcount_table[(e)]
+#define popcount(e) __builtin_popcountll(e) //popcount_table[(e)]
 
 typedef struct bitset {
 	size_t size;
@@ -43,14 +43,14 @@ typedef struct bitset {
 } bitset_t, * bitset_p;
 
 bitset_p alloc_bitset(size_t l) {
-	bitset_p const ret = malloc(sizeof(bitset_t) + sizeof(unsigned char[l]));
+	bitset_p const ret = malloc(sizeof(bitset_t) + sizeof(unsigned char[l + 8]));
 	ret->len = l;
 	ret->size = 0;
 	memset(ret->set, 0, l);
 	return ret;
 }
 
-#define free_bitset(s) (s?free(s), s = NULL:NULL)
+#define free_bitset(s) (s)//(s?free(s), s = NULL:NULL)
 
 bitset_p expand(bitset_p const set, size_t const new_l) { //using arg set after returning this func is UB
 	size_t const old_l = set->len;
@@ -83,23 +83,23 @@ bitset_p copy_(bitset_p * const d, bitset_p const s) {
 bitset_p cap(bitset_p const a, bitset_p const b) { //intersection
 	size_t const l = min(a->len, b->len);
 	bitset_p const ret = alloc_bitset(l);
-	for(size_t i = 0; i < l; i++) ret->size += popcount(ret->set[i] = a->set[i] & b->set[i]);
+	for(size_t i = 0; i < l; i += 8) ret->size += popcount(*(unsigned long long *)(ret->set+i) = *(unsigned long long *)(a->set+i) & *(unsigned long long *)(b->set+i));
 	return ret;
 }
 
 bitset_p cap_(bitset_p const * const a, bitset_p const b) { //intersection
 	size_t const l = min((*a)->len, b->len);
 	(*a)->size = 0;
-	for(size_t i = 0; i < l; i++) (*a)->size += popcount((*a)->set[i] &= b->set[i]);
-	for(size_t i = l; i < (*a)->len; i++) (*a)->size += popcount((*a)->set[i] = 0);
+	for(size_t i = 0; i < l; i += 8) (*a)->size += popcount(*(unsigned long long *)((*a)->set+i) &= *(unsigned long long *)(b->set+i));
+	for(size_t i = l; i < (*a)->len; i += 8) (*a)->size += popcount(*(unsigned long long *)((*a)->set+i) = 0);
 	return *a;
 }
 
 bitset_p cup(bitset_p const a, bitset_p const b) { //union
 	size_t const lM = max(a->len, b->len), lm = min(a->len, b->len);
 	bitset_p const ret = alloc_bitset(lM);
-	for(size_t i = 0; i < lM; i++) ret->size += popcount(ret->set[i] = a->set[i] | b->set[i]);
-	for(size_t i = lm; i < lM; i++) ret->size += popcount(ret->set[i] = lm == b->len?a->set[i]:b->set[i]);
+	for(size_t i = 0; i < lM; i += 8) ret->size += popcount(*(unsigned long long *)(ret->set+i) = *(unsigned long long *)(a->set+i) | *(unsigned long long *)(b->set+i));
+	for(size_t i = lm; i < lM; i += 8) ret->size += popcount(*(unsigned long long *)(ret->set+i) = lm == b->len?*(unsigned long long *)(a->set+i):*(unsigned long long *)(b->set+i));
 	return ret;
 }
 
@@ -107,37 +107,37 @@ bitset_p cup_(bitset_p * const a, bitset_p const b) { //union
 	size_t const lM = max((*a)->len, b->len), lm = min((*a)->len, b->len);
 	if((*a)->len < lM) expand_(a, lM);
 	(*a)->size = 0;
-	for(size_t i = 0; i < lm; i++) (*a)->size += popcount((*a)->set[i] |= b->set[i]);
-	for(size_t i = lm; i < lM; i++) (*a)->size += popcount((*a)->set[i] |= lm == b->len?(*a)->set[i]:b->set[i]);
+	for(size_t i = 0; i < lm; i += 8) (*a)->size += popcount(*(unsigned long long *)((*a)->set+i) |= *(unsigned long long *)(b->set+i));
+	for(size_t i = lm; i < lM; i += 8) (*a)->size += popcount(*(unsigned long long *)((*a)->set+i) |= lm == b->len?*(unsigned long long *)((*a)->set+i):*(unsigned long long *)(b->set+i));
 	return *a;
 }
 
 bitset_p dif(bitset_p const a, bitset_p const b) { // a - b
 	size_t const lm = min(a->len, b->len);
 	bitset_p const ret = alloc_bitset(a->len);
-	for(size_t i = 0; i < lm; i++) ret->size += popcount(ret->set[i] = a->set[i] & ~b->set[i]);
-	for(size_t i = lm; i < a->len; i++) ret->size += popcount(ret->set[i] = a->set[i]);
+	for(size_t i = 0; i < lm; i += 8) ret->size += popcount(*(unsigned long long *)(ret->set+i) = *(unsigned long long *)(a->set+i) & ~*(unsigned long long *)(b->set+i));
+	for(size_t i = lm; i < a->len; i += 8) ret->size += popcount(*(unsigned long long *)(ret->set+i) = *(unsigned long long *)(a->set+i));
 	return ret;
 }
 
 bitset_p dif_(bitset_p const * const a, bitset_p const b) { //a - b
 	size_t const lm = min((*a)->len, b->len);
 	(*a)->size = 0;
-	for(size_t i = 0; i < lm; i++) (*a)->size += popcount((*a)->set[i] &= ~b->set[i]);
-	for(size_t i = lm; i < (*a)->len; i++) (*a)->size += popcount((*a)->set[i]);
+	for(size_t i = 0; i < lm; i += 8) (*a)->size += popcount(*(unsigned long long *)((*a)->set+i) &= ~*(unsigned long long *)(b->set+i));
+	for(size_t i = lm; i < (*a)->len; i += 8) (*a)->size += popcount(*(unsigned long long *)((*a)->set+i));
 	return *a;
 }
 
 bitset_p bar(bitset_p const s) {
 	bitset_p const ret = alloc_bitset(s->len);
 	ret->size = s->len * 8 - s->size;
-	for(size_t i = 0; i < s->len; i++) ret->set[i] = ~s->set[i];
+	for(size_t i = 0; i < s->len; i += 8) *(unsigned long long *)(ret->set+i) = ~*(unsigned long long *)(s->set+i);
 	return ret;
 }
 
 bitset_p bar_(bitset_p const * const s) {
 	(*s)->size =(*s)->len * 8 - (*s)->size;
-	for(size_t i = 0; i < (*s)->len; i++) (*s)->set[i] = ~(*s)->set[i];
+	for(size_t i = 0; i < (*s)->len; i += 8) *(unsigned long long *)((*s)->set+i) = ~*(unsigned long long *)((*s)->set+i);
 	return *s;
 }
 
